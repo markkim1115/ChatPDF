@@ -7,8 +7,8 @@ macOS용 네이티브 PDF 리더. Apple PDFKit의 벡터 렌더링과 AppKit의 
 macOS 14 이상과 Swift 6 이상이 필요합니다. 현재 Mac의 Command Line Tools로 빌드할 수 있습니다.
 
 ```sh
-git clone https://github.com/markkim1115/PDFReader.git
-cd PDFReader
+git clone https://github.com/markkim1115/ChatPDF.git
+cd ChatPDF
 sh scripts/run.sh
 ```
 
