@@ -1,4 +1,4 @@
-# PDF Reader
+# ChatPDF
 
 macOS용 네이티브 PDF 리더. Apple PDFKit의 벡터 렌더링과 AppKit의 문서 창을 사용하며, 기본 복사에 줄바꿈 보정을 적용합니다. 읽기·편집·OCR은 기기 안에서 처리하며, 선택 기능인 ChatGPT 대화는 OpenAI에 연결합니다.
 
@@ -12,7 +12,9 @@ cd ChatPDF
 sh scripts/run.sh
 ```
 
-`run.sh`는 `/Applications/PDF Reader.app`을 업데이트하고 실행합니다. 실행 중인 앱이 있으면 먼저 종료해 주세요. 빌드만 하려면 `sh scripts/build.sh`를 사용합니다. 중간 결과물은 숨김·인덱싱 제외 폴더인 `build/.staging.noindex/PDF Reader.app`에 두어 ‘다음으로 열기’의 중복 등록을 피합니다. 배포 인증서 없이 로컬 ad-hoc 서명으로 빌드됩니다. 이전 버전 백업은 `.app` 사본 대신 `.zip`으로 보관합니다.
+`run.sh`는 `/Applications/ChatPDF.app`을 업데이트하고 실행합니다. 실행 중인 앱이 있으면 먼저 종료해 주세요. 빌드만 하려면 `sh scripts/build.sh`를 사용합니다. 중간 결과물은 숨김·인덱싱 제외 폴더인 `build/.staging.noindex/ChatPDF.app`에 두어 ‘다음으로 열기’의 중복 등록을 피합니다. 배포 인증서 없이 로컬 ad-hoc 서명으로 빌드됩니다. 이전 버전 백업은 `.app` 사본 대신 `.zip`으로 보관합니다.
+
+기존 PDF Reader에서 이름을 변경한 앱입니다. 기존 설정·최근 문서·대화 기록을 계속 사용하도록 앱 식별자와 `~/Library/Application Support/PDF Reader/` 저장 경로는 유지합니다.
 
 ## 사용
 

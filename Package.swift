@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "PDFReader",
+    name: "ChatPDF",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "PDFReader", targets: ["PDFReader"])],
+    products: [.executable(name: "ChatPDF", targets: ["PDFReader"])],
     targets: [
         .target(name: "PDFReaderCore"),
         .executableTarget(name: "PDFReader", dependencies: ["PDFReaderCore"]),

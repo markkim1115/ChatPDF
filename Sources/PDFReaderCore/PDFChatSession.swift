@@ -94,7 +94,7 @@ public final class PDFChatSession {
             }
             try transport.start(executable: executable, directory: directory)
             _ = try await transport.request("initialize", [
-                "clientInfo": ["name": "pdf_reader", "title": "PDF Reader", "version": "1.1.3"],
+                "clientInfo": ["name": "pdf_reader", "title": "ChatPDF", "version": "1.1.4"],
                 "capabilities": ["experimentalApi": true]
             ])
             try transport.notify("initialized")

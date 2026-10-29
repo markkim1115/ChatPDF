@@ -3,7 +3,7 @@ import Foundation
 enum ChatGPTLink {
     static func make(pdfURL: URL, documentName: String, page: Int, pageCount: Int) -> URL {
         let prompt = """
-        PDF Reader에서 읽고 있는 PDF입니다. 아래 로컬 파일을 직접 열어 전체 내용을 읽고, 한국어로 핵심 내용을 간단히 요약해 주세요. 이어서 제가 문서에 관해 질문하겠습니다.
+        ChatPDF에서 읽고 있는 PDF입니다. 아래 로컬 파일을 직접 열어 전체 내용을 읽고, 한국어로 핵심 내용을 간단히 요약해 주세요. 이어서 제가 문서에 관해 질문하겠습니다.
 
         문서 이름: \(documentName)
         PDF 파일: \(pdfURL.path)

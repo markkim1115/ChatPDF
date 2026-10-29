@@ -7,7 +7,7 @@ final class WelcomeWindowController: NSWindowController {
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 600),
                               styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "PDF Reader"
+        window.title = "ChatPDF"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
@@ -20,7 +20,7 @@ final class WelcomeWindowController: NSWindowController {
         let icon = NSImageView(image: NSImage(systemSymbolName: "doc.richtext", accessibilityDescription: nil)!)
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 54, weight: .light)
         icon.contentTintColor = .controlAccentColor
-        let title = NSTextField(labelWithString: "PDF Reader")
+        let title = NSTextField(labelWithString: "ChatPDF")
         title.font = .systemFont(ofSize: 32, weight: .semibold)
         let subtitle = NSTextField(labelWithString: "읽기는 편안하게. 복사는 매끄럽게.")
         subtitle.font = .systemFont(ofSize: 15)
@@ -95,7 +95,7 @@ final class WelcomeWindowController: NSWindowController {
     @objc private func openRecent(_ sender: NSButton) { AppDelegate.open(recentURLs[sender.tag]) }
     @objc private func openExample(_ sender: Any?) {
         guard let source = Bundle.main.url(forResource: "Reading Guide", withExtension: "pdf") else { return }
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("PDF Reader Example \(UUID().uuidString.prefix(6)).pdf")
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("ChatPDF Example \(UUID().uuidString.prefix(6)).pdf")
         do { try FileManager.default.copyItem(at: source, to: destination); AppDelegate.open(destination) }
         catch { NSApp.presentError(error) }
     }

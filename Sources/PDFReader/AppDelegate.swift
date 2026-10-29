@@ -74,17 +74,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func buildMenus() {
         let main = NSMenu()
         NSApp.mainMenu = main
-        let app = submenu("PDF Reader", in: main)
-        add("PDF Reader에 관하여", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), to: app)
+        let app = submenu("ChatPDF", in: main)
+        add("ChatPDF에 관하여", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), to: app)
         app.addItem(.separator())
         let services = submenu("서비스", in: app)
         NSApp.servicesMenu = services
         app.addItem(.separator())
-        add("PDF Reader 가리기", #selector(NSApplication.hide(_:)), key: "h", to: app)
+        add("ChatPDF 가리기", #selector(NSApplication.hide(_:)), key: "h", to: app)
         add("기타 가리기", #selector(NSApplication.hideOtherApplications(_:)), key: "h", modifiers: [.command, .option], to: app)
         add("모두 보기", #selector(NSApplication.unhideAllApplications(_:)), to: app)
         app.addItem(.separator())
-        add("PDF Reader 종료", #selector(NSApplication.terminate(_:)), key: "q", to: app)
+        add("ChatPDF 종료", #selector(NSApplication.terminate(_:)), key: "q", to: app)
 
         let file = submenu("파일", in: main)
         add("PDF 열기…", #selector(openDocument(_:)), key: "o", target: self, to: file)

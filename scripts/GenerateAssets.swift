@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let resources = root.appendingPathComponent("build/.staging.noindex/PDF Reader.app/Contents/Resources")
+let resources = root.appendingPathComponent("build/.staging.noindex/ChatPDF.app/Contents/Resources")
 let iconset = root.appendingPathComponent("build/AppIcon.iconset")
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
 
@@ -35,7 +35,7 @@ for size in [16, 32, 128, 256, 512] {
 
 var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
 let pdfURL = resources.appendingPathComponent("Reading Guide.pdf")
-let context = CGContext(pdfURL as CFURL, mediaBox: &mediaBox, [kCGPDFContextTitle: "A clearer way to read", kCGPDFContextAuthor: "PDF Reader"] as CFDictionary)!
+let context = CGContext(pdfURL as CFURL, mediaBox: &mediaBox, [kCGPDFContextTitle: "A clearer way to read", kCGPDFContextAuthor: "ChatPDF"] as CFDictionary)!
 let ink = CGColor(red: 0.12, green: 0.20, blue: 0.27, alpha: 1)
 let muted = CGColor(red: 0.42, green: 0.47, blue: 0.51, alpha: 1)
 
@@ -52,11 +52,11 @@ func rule(_ y: CGFloat) {
 }
 func footer(_ page: Int) {
     rule(54)
-    text("PDF READER  /  READING GUIDE", 58, 35, size: 8, color: muted)
+    text("CHATPDF  /  READING GUIDE", 58, 35, size: 8, color: muted)
     text(String(format: "%02d", page), 540, 35, size: 9, color: muted)
 }
 context.beginPDFPage(nil)
-text("PDF READER", 58, 734, size: 10, font: "Helvetica-Bold")
+text("CHATPDF", 58, 734, size: 10, font: "Helvetica-Bold")
 text("A LITTLE LESS FRICTION", 376, 734, size: 9, color: muted)
 rule(713)
 text("A clearer way", 58, 647, size: 43, font: "Helvetica-Bold")
