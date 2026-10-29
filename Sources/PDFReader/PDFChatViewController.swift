@@ -215,11 +215,14 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         let url = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
-        if let url, url.scheme == "pdfreader", url.host == "page", let page = Int(url.lastPathComponent) {
-            onPage?(page)
-            return true
+        if let url, let target = ChatLink(url: url) {
+            switch target {
+            case .page(let page): onPage?(page)
+            case .web(let url): NSWorkspace.shared.open(url)
+            }
         }
-        return false
+        // Consume rejected links too; NSTextView must not open them itself.
+        return true
     }
 
     private func refresh() {
@@ -286,7 +289,9 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
                         if intent.contains(.code) { font = .monospacedSystemFont(ofSize: 12, weight: .regular) }
                         attributes[.font] = font
                     }
-                    if let link = run.link { attributes[.link] = link; attributes[.foregroundColor] = NSColor.linkColor }
+                    if let link = run.link, ChatLink(url: link) != nil {
+                        attributes[.link] = link; attributes[.foregroundColor] = NSColor.linkColor
+                    }
                     content.append(NSAttributedString(string: String(markdown.characters[run.range]), attributes: attributes))
                 }
             } else {

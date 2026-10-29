@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import PDFReaderCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var welcome: WelcomeWindowController?
@@ -9,6 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         buildMenus()
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        do {
+            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("PDF Reader", isDirectory: true)
+            // Protect existing histories and exported PDFs before opening any document.
+            try PrivateChatStorage.prepareDirectory(support)
+        } catch { NSApp.presentError(error) }
         NSApp.activate(ignoringOtherApps: true)
         if NSDocumentController.shared.documents.isEmpty { showWelcome(nil) }
     }

@@ -350,11 +350,10 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                      appropriateFor: nil, create: true)
             let directory = support.appendingPathComponent("PDF Reader/ChatGPT", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let pdfURL = directory.appendingPathComponent("\(UUID().uuidString).pdf")
             // Keep the exact document state available when the chat is resumed later.
             // This also includes annotations that have not been saved to the original.
-            try readerDocument.data(ofType: "com.adobe.pdf").write(to: pdfURL, options: .atomic)
+            let pdfURL = try PrivateChatStorage.exportPDF(readerDocument.data(ofType: "com.adobe.pdf"),
+                                                         directory: directory)
             let page = pdfView.currentPage.map { readerDocument.pdf.index(for: $0) + 1 } ?? 1
             let url = ChatGPTLink.make(pdfURL: pdfURL, documentName: readerDocument.displayName ?? "PDF",
                                        page: page, pageCount: readerDocument.pdf.pageCount)

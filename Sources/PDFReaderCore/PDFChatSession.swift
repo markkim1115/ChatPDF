@@ -64,7 +64,7 @@ public final class PDFChatSession {
             guard FileManager.default.isExecutableFile(atPath: executable.path) else {
                 throw ChatError("ChatGPT 데스크톱 앱이 필요합니다. 앱을 설치하고 로그인한 뒤 다시 연결해 주세요.")
             }
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try PrivateChatStorage.prepareDirectory(directory)
             let transport = ChatRPC()
             rpc = transport
             transport.onNotification = { [weak self] method, params in self?.notification(method, params) }
@@ -92,12 +92,13 @@ public final class PDFChatSession {
                 if self.isBusy { self.finish(error: error.localizedDescription) }
                 else { self.status = error.localizedDescription; self.onChange?() }
             }
-            try transport.start(executable: executable, directory: directory)
+            try await transport.start(executable: executable, directory: directory)
             _ = try await transport.request("initialize", [
-                "clientInfo": ["name": "pdf_reader", "title": "ChatPDF", "version": "1.1.4"],
+                "clientInfo": ["name": "pdf_reader", "title": "ChatPDF", "version": "1.1.5"],
                 "capabilities": ["experimentalApi": true]
             ])
             try transport.notify("initialized")
+            try await transport.verifyToolRestrictions()
             try await refreshAccount()
             if signedIn, let threadID = history.threadID {
                 _ = try await transport.request("thread/name/set", ["threadId": threadID, "name": documentName])
@@ -148,7 +149,8 @@ public final class PDFChatSession {
         try await connect()
         guard let rpc else { throw ChatError("ChatGPT에 연결되어 있지 않습니다.") }
         let result = try await rpc.request("account/login/start", ["type": "chatgpt"])
-        guard let value = result["authUrl"] as? String, let url = URL(string: value) else {
+        guard let value = result["authUrl"] as? String, let url = URL(string: value),
+              url.scheme?.lowercased() == "https", case .web = ChatLink(url: url) else {
             throw ChatError("로그인 화면을 열지 못했습니다.")
         }
         status = "브라우저에서 ChatGPT 로그인을 완료해 주세요"
@@ -172,7 +174,7 @@ public final class PDFChatSession {
                 onChange?()
                 var params: [String: Any] = [
                     "model": model.id, "cwd": directory.path, "approvalPolicy": "never", "sandbox": "read-only",
-                    "baseInstructions": PDFChatContext.instructions, "config": Self.configuration
+                    "baseInstructions": PDFChatContext.instructions, "config": rpc.sessionConfiguration
                 ]
                 if let threadID = history.threadID {
                     params["threadId"] = threadID
@@ -242,16 +244,6 @@ public final class PDFChatSession {
         save()
         isBusy = false; isConnected = false
     }
-
-    private static let configuration: [String: Any] = [
-        "features.shell_tool": false, "features.unified_exec": false,
-        "features.computer_use": false, "features.browser_use": false,
-        "features.multi_agent": false, "features.hooks": false,
-        "features.skill_search": false, "features.skip_host_skill_discovery": true,
-        "features.image_generation": false, "features.view_image": false,
-        "features.workspace_dependencies": false,
-        "web_search": "disabled", "project_doc_max_bytes": 0
-    ]
 
     private func notification(_ method: String, _ params: [String: Any]) {
         guard !closed else { return }

@@ -38,16 +38,40 @@ public final class ChatRPC {
     private var sequence = 0
     private var pending: [Int: CheckedContinuation<[String: Any], Error>] = [:]
     private var timeouts: [Int: Task<Void, Never>] = [:]
+    private(set) var sessionConfiguration: [String: Any] = [:]
+
+    static let restrictedConfiguration: [String: Any] = [
+        "features.apps": false, "features.plugins": false,
+        "features.shell_tool": false, "features.unified_exec": false,
+        "features.computer_use": false, "features.browser_use": false,
+        "features.multi_agent": false, "features.hooks": false,
+        "features.skill_search": false, "features.skip_host_skill_discovery": true,
+        "features.image_generation": false, "features.view_image": false,
+        "features.workspace_dependencies": false,
+        "web_search": "disabled", "project_doc_max_bytes": 0, "notify": [] as [String]
+    ]
 
     public init() {}
 
-    public func start(executable: URL, directory: URL) throws {
+    public func start(executable: URL, directory: URL) async throws {
+        let options = try Self.restrictedConfiguration.sorted(by: { $0.key < $1.key }).flatMap { key, value in
+            ["-c", "\(key)=\(try Self.tomlLiteral(value))"]
+        }
+        // An empty TOML table merges with user settings; it does not clear them.
+        // Enumerate configuration without starting MCP servers, then disable each one.
+        let overrides = try await Task.detached(priority: .userInitiated) {
+            try Self.disabledMCPServers(executable: executable, directory: directory, options: options)
+        }.value
+        try Task.checkCancellation()
+        sessionConfiguration = Self.restrictedConfiguration
+        sessionConfiguration["mcp_servers"] = overrides
+        let table = try overrides.keys.sorted().map { name in
+            "\(try Self.tomlLiteral(name))={enabled=false}"
+        }.joined(separator: ",")
         let child = Process(), stdin = Pipe(), stdout = Pipe()
         child.executableURL = executable
         child.currentDirectoryURL = directory
-        child.arguments = ["app-server", "--listen", "stdio://",
-                           "-c", "features.apps=false", "-c", "features.plugins=false",
-                           "-c", "mcp_servers={}"]
+        child.arguments = ["app-server", "--listen", "stdio://"] + options + ["-c", "mcp_servers={\(table)}"]
         child.standardInput = stdin
         child.standardOutput = stdout
         child.standardError = FileHandle.nullDevice
@@ -73,6 +97,57 @@ public final class ChatRPC {
         process = child
         input = stdin.fileHandleForWriting
         output = stdout.fileHandleForReading
+    }
+
+    private nonisolated static func tomlLiteral(_ value: Any) throws -> String {
+        String(decoding: try JSONSerialization.data(withJSONObject: value,
+                                                    options: [.fragmentsAllowed, .withoutEscapingSlashes]), as: UTF8.self)
+    }
+
+    private nonisolated static func disabledMCPServers(executable: URL, directory: URL,
+                                                      options: [String]) throws -> [String: [String: Bool]] {
+        let child = Process(), output = Pipe()
+        child.executableURL = executable
+        child.currentDirectoryURL = directory
+        child.arguments = ["mcp", "list", "--json"] + options
+        child.standardInput = FileHandle.nullDevice
+        child.standardOutput = output
+        child.standardError = FileHandle.nullDevice
+        try child.run()
+        let timeout = DispatchWorkItem { if child.isRunning { child.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 15, execute: timeout)
+        defer { timeout.cancel() }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        child.waitUntilExit()
+        guard child.terminationStatus == 0 else { throw ChatError("외부 도구 설정을 확인하지 못해 ChatGPT 연결을 중단했습니다.") }
+        guard let servers = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw ChatError("ChatGPT의 도구 설정 형식을 확인할 수 없습니다.")
+        }
+        var result: [String: [String: Bool]] = [:]
+        for server in servers {
+            guard let name = server["name"] as? String else { throw ChatError("외부 도구 이름을 확인할 수 없습니다.") }
+            result[name] = ["enabled": false]
+        }
+        return result
+    }
+
+    func verifyToolRestrictions() async throws {
+        let response = try await request("config/read", ["includeLayers": false])
+        guard let config = response["config"] as? [String: Any],
+              let features = config["features"] as? [String: Any] else {
+            throw ChatError("ChatGPT의 도구 제한을 확인하지 못해 연결을 중단했습니다.")
+        }
+        for (key, value) in Self.restrictedConfiguration where key.hasPrefix("features.") {
+            guard features[String(key.dropFirst("features.".count))] as? Bool == value as? Bool else {
+                throw ChatError("ChatGPT의 도구 제한이 적용되지 않아 연결을 중단했습니다.")
+            }
+        }
+        guard let servers = config["mcp_servers"] as? [String: [String: Any]],
+              servers.values.allSatisfy({ $0["enabled"] as? Bool == false }),
+              config["web_search"] as? String == "disabled",
+              let notifications = config["notify"] as? [String], notifications.isEmpty else {
+            throw ChatError("외부 도구가 활성화되어 ChatGPT 연결을 중단했습니다.")
+        }
     }
 
     public func request(_ method: String, _ params: [String: Any] = [:]) async throws -> [String: Any] {

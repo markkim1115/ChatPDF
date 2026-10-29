@@ -61,12 +61,79 @@ struct PDFChatTests {
         history.model = "model-from-server"
         history.messages = [ChatMessage(role: "user", text: "이 수식을 설명해 줘")]
         history.interrupted = true
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o755])
         try history.save(to: first)
+        #expect(try permissions(directory) == 0o700)
+        #expect(try permissions(first) == 0o600)
+        // A later atomic replacement must not restore permissive file modes.
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: first.path)
+        try history.save(to: first)
+        #expect(try permissions(first) == 0o600)
         let restored = try ChatHistory.load(from: first)
         #expect(restored.threadID == history.threadID)
         #expect(restored.messages.first?.text == history.messages.first?.text)
         #expect(restored.interrupted)
         #expect(try ChatHistory.load(from: second).messages.isEmpty)
+    }
+
+    @Test func exportedPDFsHaveSeparatePrivateFolders() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pdf = PDFIntegrationTests.makePDF([[.init(text: "Private export", y: 720)]])
+        let data = try #require(pdf.dataRepresentation())
+        let first = try PrivateChatStorage.exportPDF(data, directory: directory)
+        let second = try PrivateChatStorage.exportPDF(data, directory: directory)
+        #expect(first.deletingLastPathComponent() != second.deletingLastPathComponent())
+        #expect(try permissions(directory) == 0o700)
+        for file in [first, second] {
+            #expect(try permissions(file) == 0o600)
+            #expect(try permissions(file.deletingLastPathComponent()) == 0o700)
+            #expect(try Data(contentsOf: file) == data)
+            #expect(PDFDocument(url: file)?.pageCount == 1)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path) == ["document.pdf"])
+        }
+    }
+
+    @Test func chatLinksAllowOnlyWebAndPageNavigation() throws {
+        for value in ["https://example.org/paper?q=1#abstract", "http://example.org", "HTTPS://example.org"] {
+            let url = try #require(URL(string: value))
+            #expect(ChatLink(url: url) == .web(url))
+        }
+        #expect(ChatLink(url: URL(string: "pdfreader://page/3")!) == .page(3))
+        for value in ["file:///etc/hosts", "codex://new?prompt=untrusted", "javascript:alert(1)",
+                      "data:text/html,test", "mailto:test@example.org", "//example.org/path", "relative/path",
+                      "https://", "https://user:password@example.org", "pdfreader://page/0",
+                      "pdfreader://page/-1", "pdfreader://other/3", "pdfreader://page/3/4",
+                      "pdfreader://page/3?command=run", "pdfreader://page:123/3",
+                      "pdfreader://page/999999999999999999999999999"] {
+            let url = try #require(URL(string: value))
+            #expect(ChatLink(url: url) == nil, "Rejected link: \(value)")
+        }
+    }
+
+    private func permissions(_ url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return try #require(attributes[.posixPermissions] as? NSNumber).intValue
+    }
+
+    // Uses the installed app-server and reads configuration only; no model request.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["PDFREADER_CHAT_SECURITY_TEST"] == "1"))
+    func installedServerDisablesInheritedTools() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try PrivateChatStorage.prepareDirectory(directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rpc = ChatRPC()
+        defer { rpc.stop() }
+        try await rpc.start(executable: URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
+                            directory: directory)
+        _ = try await rpc.request("initialize", ["clientInfo": ["name": "chatpdf_security_test", "version": "1.1.5"]])
+        try rpc.notify("initialized")
+        try await rpc.verifyToolRestrictions()
+        let response = try await rpc.request("config/read", ["includeLayers": false])
+        let config = try #require(response["config"] as? [String: Any])
+        let servers = try #require(config["mcp_servers"] as? [String: [String: Any]])
+        #expect(servers.values.allSatisfy { $0["enabled"] as? Bool == false })
     }
 
     // Opt in explicitly: uses the signed-in ChatGPT account and a synthetic PDF only.
@@ -98,7 +165,7 @@ struct PDFChatTests {
         let threadID = try #require(session.history.threadID)
         let observer = ChatRPC()
         defer { observer.stop() }
-        try observer.start(executable: executable, directory: directory)
+        try await observer.start(executable: executable, directory: directory)
         _ = try await observer.request("initialize", ["clientInfo": ["name": "pdf_reader_test_observer", "version": "1.1.1"]])
         try observer.notify("initialized")
         let created = try await observer.request("thread/read", ["threadId": threadID])
