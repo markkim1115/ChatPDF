@@ -32,6 +32,11 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
     private let sendButton = NSButton(title: "보내기", target: nil, action: nil)
     private let connectButton = NSButton(title: "연결", target: nil, action: nil)
     private let newButton = NSButton()
+    private let zoomOutButton = NSButton()
+    private let zoomInButton = NSButton()
+    private let zoomResetButton = NSButton(title: "100%", target: nil, action: nil)
+    private let zoomLevels = [75, 90, 100, 110, 125, 150, 175, 200]
+    private var zoomPercent = 100
     private let status = NSTextField(wrappingLabelWithString: "")
     private let contextLabel = NSTextField(labelWithString: "")
     private var documentAvailable = true
@@ -60,9 +65,25 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
         newButton.toolTip = "새 대화 시작 · 기존 대화는 파일로 보관합니다"
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "대화창 닫기")!, target: self, action: #selector(closePanel))
         close.bezelStyle = .texturedRounded
+        zoomOutButton.image = NSImage(systemSymbolName: "minus", accessibilityDescription: "대화 축소")
+        zoomInButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "대화 확대")
+        zoomOutButton.action = #selector(zoomOut)
+        zoomInButton.action = #selector(zoomIn)
+        zoomResetButton.action = #selector(resetZoom)
+        zoomResetButton.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        zoomResetButton.toolTip = "대화 배율 · 클릭하면 100%로 복원"
+        for button in [zoomOutButton, zoomResetButton, zoomInButton] {
+            button.target = self
+            button.bezelStyle = .texturedRounded
+        }
+        zoomOutButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        zoomInButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        zoomResetButton.widthAnchor.constraint(equalToConstant: 50).isActive = true
+        let zoomControls = NSStackView(views: [zoomOutButton, zoomResetButton, zoomInButton])
+        zoomControls.spacing = 2
         let spacer = NSView()
-        let header = NSStackView(views: [title, spacer, newButton, close])
-        header.spacing = 8
+        let header = NSStackView(views: [title, spacer, zoomControls, newButton, close])
+        header.spacing = 6
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         modelPicker.target = self; modelPicker.action = #selector(modelChanged)
@@ -154,6 +175,8 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
             hint.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
             status.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -14)
         ])
+        let savedZoom = UserDefaults.standard.integer(forKey: "chatZoomPercent")
+        applyZoom(zoomLevels.contains(savedZoom) ? savedZoom : 100)
         refresh()
     }
 
@@ -184,6 +207,29 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
     }
 
     @objc private func closePanel() { onClose?() }
+
+    @objc private func zoomOut() {
+        if let value = zoomLevels.last(where: { $0 < zoomPercent }) { applyZoom(value) }
+    }
+
+    @objc private func zoomIn() {
+        if let value = zoomLevels.first(where: { $0 > zoomPercent }) { applyZoom(value) }
+    }
+
+    @objc private func resetZoom() { applyZoom(100) }
+
+    private func applyZoom(_ percent: Int) {
+        zoomPercent = percent
+        UserDefaults.standard.set(percent, forKey: "chatZoomPercent")
+        zoomResetButton.title = "\(percent)%"
+        zoomResetButton.setAccessibilityLabel("대화 배율 \(percent)% · 기본 배율로 복원")
+        zoomOutButton.isEnabled = percent > zoomLevels[0]
+        zoomInButton.isEnabled = percent < zoomLevels[zoomLevels.count - 1]
+        let scale = CGFloat(percent) / 100
+        transcript.setTextScale(scale)
+        composer.font = .systemFont(ofSize: 13 * scale)
+        composer.needsDisplay = true
+    }
 
     @objc private func connect() {
         Task { [weak self] in

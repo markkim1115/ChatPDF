@@ -40,11 +40,13 @@ private final class ChatMessageView: NSView {
     private let copyButton = NSButton()
     private var measuredWidth: CGFloat = -1
     private var measuredHeight: CGFloat = 0
+    private var textScale: CGFloat
 
     override var isFlipped: Bool { true }
 
-    init(message: ChatMessage, delegate: NSTextViewDelegate?) {
+    init(message: ChatMessage, scale: CGFloat, delegate: NSTextViewDelegate?) {
         self.message = message
+        textScale = scale
         super.init(frame: .zero)
         body.isEditable = false
         body.isSelectable = true
@@ -59,7 +61,7 @@ private final class ChatMessageView: NSView {
         body.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
         body.setAccessibilityLabel(message.role == "user" ? "내 질문" : message.role == "assistant" ? "ChatGPT 답변" : "대화 안내")
         author.stringValue = message.role == "user" ? "나" : message.role == "assistant" ? "ChatGPT" : "안내"
-        author.font = .systemFont(ofSize: 11, weight: .medium)
+        author.font = .systemFont(ofSize: 11 * scale, weight: .medium)
         author.textColor = .secondaryLabelColor
         copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "메시지 복사")
         copyButton.imageScaling = .scaleProportionallyDown
@@ -74,16 +76,18 @@ private final class ChatMessageView: NSView {
         addSubview(copyButton)
         addSubview(bubble)
         bubble.addSubview(body)
-        body.textStorage?.setAttributedString(Self.formatted(message))
+        body.textStorage?.setAttributedString(Self.formatted(message, scale: scale))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func update(_ message: ChatMessage) {
-        guard self.message.text != message.text else { return }
+    func update(_ message: ChatMessage, scale: CGFloat) {
+        guard self.message.text != message.text || textScale != scale else { return }
         let selection = body.selectedRange()
         self.message = message
-        body.textStorage?.setAttributedString(Self.formatted(message))
+        textScale = scale
+        author.font = .systemFont(ofSize: 11 * scale, weight: .medium)
+        body.textStorage?.setAttributedString(Self.formatted(message, scale: scale))
         if NSMaxRange(selection) <= body.string.utf16.count { body.setSelectedRange(selection) }
         measuredWidth = -1
     }
@@ -97,14 +101,15 @@ private final class ChatMessageView: NSView {
         guard let container = body.textContainer, let manager = body.layoutManager else { return 0 }
         container.containerSize = NSSize(width: max(1, maximum - padding * 2), height: .greatestFiniteMagnitude)
         manager.ensureLayout(for: container)
-        let bubbleWidth = min(maximum, max(76, ceil(manager.usedRect(for: container).width) + padding * 2))
+        let bubbleWidth = min(maximum, max(author.intrinsicContentSize.width + 30, 76, ceil(manager.usedRect(for: container).width) + padding * 2))
         container.containerSize.width = max(1, bubbleWidth - padding * 2)
         manager.ensureLayout(for: container)
         let textHeight = max(20, ceil(manager.usedRect(for: container).height))
         let x = message.role == "user" ? width - 12 - bubbleWidth : 12
-        author.frame = NSRect(x: x + 3, y: 0, width: bubbleWidth - 30, height: 17)
-        copyButton.frame = NSRect(x: x + bubbleWidth - 23, y: -2, width: 22, height: 22)
-        bubble.frame = NSRect(x: x, y: 23, width: bubbleWidth, height: textHeight + 24)
+        let authorHeight = max(17, ceil(author.intrinsicContentSize.height))
+        author.frame = NSRect(x: x + 3, y: 0, width: bubbleWidth - 30, height: authorHeight)
+        copyButton.frame = NSRect(x: x + bubbleWidth - 23, y: (authorHeight - 22) / 2, width: 22, height: 22)
+        bubble.frame = NSRect(x: x, y: authorHeight + 6, width: bubbleWidth, height: textHeight + 24)
         body.frame = NSRect(x: padding, y: 12, width: bubbleWidth - padding * 2, height: textHeight)
         measuredHeight = bubble.frame.maxY
         return measuredHeight
@@ -117,12 +122,12 @@ private final class ChatMessageView: NSView {
                              userInfo: [.announcement: "메시지를 복사했습니다", .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 
-    private static func formatted(_ message: ChatMessage) -> NSAttributedString {
+    private static func formatted(_ message: ChatMessage, scale: CGFloat) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 4
+        paragraph.lineSpacing = 4 * scale
         paragraph.paragraphSpacing = 0
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13),
+            .font: NSFont.systemFont(ofSize: 13 * scale),
             .foregroundColor: message.role == "notice" ? NSColor.secondaryLabelColor : NSColor.labelColor,
             .paragraphStyle: paragraph
         ]
@@ -134,10 +139,10 @@ private final class ChatMessageView: NSView {
         for run in markdown.runs {
             var style = attributes
             if let intent = run.inlinePresentationIntent {
-                var font = NSFont.systemFont(ofSize: 13)
-                if intent.contains(.stronglyEmphasized) { font = .boldSystemFont(ofSize: 13) }
+                var font = NSFont.systemFont(ofSize: 13 * scale)
+                if intent.contains(.stronglyEmphasized) { font = .boldSystemFont(ofSize: 13 * scale) }
                 if intent.contains(.emphasized) { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
-                if intent.contains(.code) { font = .monospacedSystemFont(ofSize: 12, weight: .regular) }
+                if intent.contains(.code) { font = .monospacedSystemFont(ofSize: 12 * scale, weight: .regular) }
                 style[.font] = font
             }
             if let link = run.link, ChatLink(url: link) != nil {
@@ -155,7 +160,8 @@ final class ChatTranscriptView: NSView {
     weak var textDelegate: NSTextViewDelegate?
     private var rows: [ChatMessageView] = []
     private var lastQuestionID: String?
-    private let emptyTitle = NSTextField(labelWithString: "PDF를 읽으며 바로 질문하세요")
+    private var textScale: CGFloat = 1
+    private let emptyTitle = NSTextField(wrappingLabelWithString: "PDF를 읽으며 바로 질문하세요")
     private let emptyBody = NSTextField(wrappingLabelWithString: "내용을 요약하거나 수식과 그림을 함께 살펴보세요.\n\n문장을 선택하면 질문에 함께 담깁니다.\n질문에 필요한 PDF 내용은 ChatGPT로 전송됩니다.")
     private let activity = NSTextField(labelWithString: "답변을 준비하는 중…")
     private var viewportHeight: CGFloat = 0
@@ -201,8 +207,8 @@ final class ChatTranscriptView: NSView {
         lastQuestionID = lastQuestion
         let existing = Dictionary(uniqueKeysWithValues: rows.map { ($0.message.id, $0) })
         rows = messages.map { message in
-            if let row = existing[message.id] { row.update(message); return row }
-            let row = ChatMessageView(message: message, delegate: textDelegate)
+            if let row = existing[message.id] { row.update(message, scale: textScale); return row }
+            let row = ChatMessageView(message: message, scale: textScale, delegate: textDelegate)
             addSubview(row)
             return row
         }
@@ -226,6 +232,18 @@ final class ChatTranscriptView: NSView {
         restore(position)
     }
 
+    func setTextScale(_ scale: CGFloat) {
+        guard textScale != scale else { return }
+        let position = scrollPosition()
+        textScale = scale
+        rows.forEach { $0.update($0.message, scale: scale) }
+        emptyTitle.font = .systemFont(ofSize: 15 * scale, weight: .semibold)
+        emptyBody.font = .systemFont(ofSize: 12 * scale)
+        activity.font = .systemFont(ofSize: 12 * scale)
+        arrangeRows()
+        restore(position)
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         let position = scrollPosition()
         let widthChanged = frame.width != newSize.width
@@ -241,12 +259,17 @@ final class ChatTranscriptView: NSView {
             y += height + 24
         }
         if !activity.isHidden {
-            activity.frame = NSRect(x: 26, y: y, width: max(0, bounds.width - 52), height: 20)
-            y += 44
+            let height = max(20, ceil(activity.intrinsicContentSize.height))
+            activity.frame = NSRect(x: 26, y: y, width: max(0, bounds.width - 52), height: height)
+            y += height + 24
         }
-        emptyTitle.frame = NSRect(x: 16, y: 65, width: max(0, bounds.width - 32), height: 24)
-        emptyBody.frame = NSRect(x: 26, y: 103, width: max(0, bounds.width - 52), height: 130)
-        let height = max(viewportHeight, rows.isEmpty ? 260 : y)
+        let titleWidth = max(1, bounds.width - 32)
+        let bodyWidth = max(1, bounds.width - 52)
+        let titleHeight = ceil(emptyTitle.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: titleWidth, height: .greatestFiniteMagnitude)).height)
+        let bodyHeight = ceil(emptyBody.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: bodyWidth, height: .greatestFiniteMagnitude)).height)
+        emptyTitle.frame = NSRect(x: 16, y: 65, width: titleWidth, height: titleHeight)
+        emptyBody.frame = NSRect(x: 26, y: emptyTitle.frame.maxY + 14, width: bodyWidth, height: bodyHeight)
+        let height = max(viewportHeight, rows.isEmpty ? emptyBody.frame.maxY + 32 : y)
         if frame.height != height { super.setFrameSize(NSSize(width: frame.width, height: height)) }
     }
 

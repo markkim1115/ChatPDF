@@ -12,7 +12,7 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
     private let sidebar = NSView()
     private let thumbnails = PDFThumbnailView()
     private let searchBar = NSView()
-    private let searchField = NSSearchField()
+    private let searchField = ExpandingSearchField(frame: .zero)
     private let searchCount = NSTextField(labelWithString: "")
     private let pageField = NSTextField(string: "1")
     private let pageTotal = NSTextField(labelWithString: "/ 1")
@@ -105,25 +105,29 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
         splitView.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
 
         searchField.placeholderString = "문서에서 검색"
+        searchField.setAccessibilityLabel("문서에서 검색")
+        searchField.toolTip = "문서에서 검색 · ⌘F"
         searchField.delegate = self
         searchField.target = self
         searchField.action = #selector(nextMatch(_:))
         searchField.sendsSearchStringImmediately = false
         searchField.sendsWholeSearchString = false
+        searchField.onFocus = { [weak self] in self?.beginSearch() }
         searchCount.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         searchCount.textColor = .secondaryLabelColor
         let previous = iconButton("chevron.up", label: "이전 검색 결과", action: #selector(previousMatch(_:)))
         let next = iconButton("chevron.down", label: "다음 검색 결과", action: #selector(nextMatch(_:)))
         let close = iconButton("xmark", label: "검색 닫기", action: #selector(closeSearch(_:)))
-        let searchStack = NSStackView(views: [searchField, searchCount, previous, next, close])
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let searchStack = NSStackView(views: [spacer, searchCount, previous, next, close])
         searchStack.spacing = 10
         searchBar.addSubview(searchStack)
         searchStack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             searchStack.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
             searchStack.leadingAnchor.constraint(equalTo: searchBar.leadingAnchor, constant: 18),
-            searchStack.trailingAnchor.constraint(equalTo: searchBar.trailingAnchor, constant: -18),
-            searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 240)
+            searchStack.trailingAnchor.constraint(equalTo: searchBar.trailingAnchor, constant: -18)
         ])
         searchBar.isHidden = true
 
@@ -250,7 +254,8 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
             item.view = chatGPTButton
         case "search":
             item.label = "검색"
-            item.view = iconButton("magnifyingglass", label: "문서 검색 · ⌘F", action: #selector(showSearch(_:)))
+            item.visibilityPriority = .high
+            item.view = searchField
         default: return nil
         }
         return item
@@ -512,9 +517,14 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
         refreshControls()
     }
     @objc func showSearch(_ sender: Any?) {
-        searchBar.isHidden = false
-        searchHeight.constant = 46
         window?.makeFirstResponder(searchField)
+        searchField.selectText(sender)
+    }
+    private func beginSearch() {
+        guard searchBar.isHidden else { return }
+        searchBar.isHidden = false
+        searchHeight.constant = 36
+        findSearchText()
     }
     @objc func closeSearch(_ sender: Any?) {
         searchWork?.cancel()
@@ -522,10 +532,16 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
         searchBar.isHidden = true
         searchHeight.constant = 0
         pdfView.highlightedSelections = nil
+        matches = []
+        matchIndex = -1
+        searchCount.stringValue = ""
         window?.makeFirstResponder(pdfView)
     }
     func controlTextDidChange(_ obj: Notification) {
         guard obj.object as? NSSearchField === searchField else { return }
+        findSearchText()
+    }
+    private func findSearchText() {
         searchWork?.cancel()
         readerDocument.pdf.cancelFindString()
         matches = []
@@ -543,6 +559,7 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
     func didMatchString(_ instance: PDFSelection) {
+        guard !searchBar.isHidden else { return }
         instance.color = NSColor.systemYellow.withAlphaComponent(0.35)
         matches.append(instance)
         if matchIndex == -1 { matchIndex = 0; revealMatch() }
