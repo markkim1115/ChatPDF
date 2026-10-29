@@ -3,6 +3,14 @@ import PDFReaderCore
 
 private final class ChatComposer: NSTextView {
     var onSend: (() -> Void)?
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        if string.isEmpty {
+            ("PDF에 관해 질문하세요" as NSString).draw(at: NSPoint(x: textContainerOrigin.x + 5, y: textContainerOrigin.y),
+                withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.placeholderTextColor])
+        }
+    }
+    override func didChangeText() { super.didChangeText(); needsDisplay = true }
     override func keyDown(with event: NSEvent) {
         // Let the input method commit marked Korean text before handling Return.
         if event.keyCode == 36, !event.modifierFlags.contains(.shift), !hasMarkedText() {
@@ -18,7 +26,7 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
     var makeContext: (() throws -> PDFChatContext)?
     private let session: PDFChatSession
     private let modelPicker = NSPopUpButton()
-    private let transcript = NSTextView()
+    private let transcript = ChatTranscriptView(frame: .zero)
     private let transcriptScroll = NSScrollView()
     private let composer = ChatComposer()
     private let sendButton = NSButton(title: "보내기", target: nil, action: nil)
@@ -26,8 +34,6 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
     private let newButton = NSButton()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let contextLabel = NSTextField(labelWithString: "")
-    private var renderedMessages: [String] = []
-    private var renderedBusy = false
     private var documentAvailable = true
     private var renderTask: Task<Void, Never>?
 
@@ -45,11 +51,7 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        let panel = NSVisualEffectView()
-        panel.material = .sidebar
-        panel.blendingMode = .withinWindow
-        panel.state = .followsWindowActiveState
-        view = panel
+        view = ChatPanelBackground()
         let title = NSTextField(labelWithString: "ChatGPT")
         title.font = .systemFont(ofSize: 16, weight: .semibold)
         newButton.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "새 대화")
@@ -73,19 +75,10 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
         modelRow.spacing = 8
         modelPicker.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        transcript.isEditable = false
-        transcript.isSelectable = true
-        transcript.isRichText = true
-        transcript.drawsBackground = false
-        transcript.delegate = self
-        transcript.textContainerInset = NSSize(width: 4, height: 14)
-        transcript.isVerticallyResizable = true
-        transcript.isHorizontallyResizable = false
-        transcript.autoresizingMask = [.width]
-        transcript.textContainer?.widthTracksTextView = true
-        transcript.setAccessibilityLabel("PDF 대화 내용")
+        transcript.textDelegate = self
         transcriptScroll.documentView = transcript
         transcriptScroll.hasVerticalScroller = true
+        transcriptScroll.autohidesScrollers = true
         transcriptScroll.drawsBackground = false
         transcriptScroll.contentView.drawsBackground = false
 
@@ -93,8 +86,9 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
         contextLabel.textColor = .secondaryLabelColor
         contextLabel.lineBreakMode = .byTruncatingTail
         composer.isRichText = false
+        composer.drawsBackground = false
         composer.font = .systemFont(ofSize: 13)
-        composer.textContainerInset = NSSize(width: 8, height: 8)
+        composer.textContainerInset = NSSize(width: 2, height: 4)
         composer.isAutomaticQuoteSubstitutionEnabled = false
         composer.isAutomaticDashSubstitutionEnabled = false
         composer.isVerticallyResizable = true
@@ -110,23 +104,30 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
         let inputScroll = NSScrollView()
         inputScroll.documentView = composer
         inputScroll.hasVerticalScroller = true
-        inputScroll.borderType = .bezelBorder
-        inputScroll.wantsLayer = true
-        inputScroll.layer?.cornerRadius = 8
-        inputScroll.layer?.masksToBounds = true
+        inputScroll.autohidesScrollers = true
+        inputScroll.borderType = .noBorder
+        inputScroll.drawsBackground = false
+        inputScroll.contentView.drawsBackground = false
+        let inputSurface = ChatRoundedSurface()
+        inputSurface.addSubview(inputScroll)
+        inputScroll.translatesAutoresizingMaskIntoConstraints = false
         let hint = NSTextField(labelWithString: "Enter 전송 · ⇧Enter 줄바꿈")
         hint.font = .systemFont(ofSize: 10)
         hint.textColor = .tertiaryLabelColor
-        sendButton.bezelStyle = .rounded
+        sendButton.bezelStyle = .circular
+        sendButton.imagePosition = .imageOnly
+        sendButton.imageScaling = .scaleProportionallyDown
         sendButton.target = self; sendButton.action = #selector(send)
-        let footer = NSStackView(views: [hint, NSView(), sendButton])
-        footer.spacing = 8
+        inputSurface.addSubview(hint)
+        inputSurface.addSubview(sendButton)
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
         status.font = .systemFont(ofSize: 11)
         status.textColor = .secondaryLabelColor
         status.maximumNumberOfLines = 3
         status.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        [header, modelRow, transcriptScroll, contextLabel, inputScroll, footer, status].forEach {
+        [header, modelRow, transcriptScroll, contextLabel, inputSurface, status].forEach {
             view.addSubview($0); $0.translatesAutoresizingMaskIntoConstraints = false
             $0.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16).isActive = true
             $0.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16).isActive = true
@@ -137,15 +138,28 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
             modelRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
             modelRow.heightAnchor.constraint(equalToConstant: 26),
             transcriptScroll.topAnchor.constraint(equalTo: modelRow.bottomAnchor, constant: 10),
-            transcriptScroll.bottomAnchor.constraint(equalTo: contextLabel.topAnchor, constant: -10),
-            contextLabel.bottomAnchor.constraint(equalTo: inputScroll.topAnchor, constant: -6),
-            inputScroll.heightAnchor.constraint(equalToConstant: 92),
-            inputScroll.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -6),
-            footer.heightAnchor.constraint(equalToConstant: 28),
-            footer.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -8),
+            transcriptScroll.bottomAnchor.constraint(equalTo: contextLabel.topAnchor, constant: -12),
+            contextLabel.bottomAnchor.constraint(equalTo: inputSurface.topAnchor, constant: -8),
+            inputSurface.heightAnchor.constraint(equalToConstant: 120),
+            inputSurface.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -10),
+            inputScroll.topAnchor.constraint(equalTo: inputSurface.topAnchor, constant: 10),
+            inputScroll.leadingAnchor.constraint(equalTo: inputSurface.leadingAnchor, constant: 10),
+            inputScroll.trailingAnchor.constraint(equalTo: inputSurface.trailingAnchor, constant: -10),
+            inputScroll.bottomAnchor.constraint(equalTo: sendButton.topAnchor, constant: -6),
+            sendButton.widthAnchor.constraint(equalToConstant: 30),
+            sendButton.heightAnchor.constraint(equalToConstant: 30),
+            sendButton.trailingAnchor.constraint(equalTo: inputSurface.trailingAnchor, constant: -10),
+            sendButton.bottomAnchor.constraint(equalTo: inputSurface.bottomAnchor, constant: -8),
+            hint.leadingAnchor.constraint(equalTo: inputSurface.leadingAnchor, constant: 14),
+            hint.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
             status.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -14)
         ])
         refresh()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        transcript.fitViewport()
     }
 
     func show() {
@@ -199,6 +213,7 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
         do {
             guard let context = try makeContext?() else { return }
             composer.string = ""
+            composer.needsDisplay = true
             Task { [weak self] in
                 guard let self else { return }
                 await self.session.send(text, context: context)
@@ -245,62 +260,22 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
                 try? await Task.sleep(for: .milliseconds(60))
                 guard !Task.isCancelled, let self else { return }
                 self.renderTask = nil
-                self.renderTranscript()
+                self.transcript.update(messages: self.session.history.messages, isBusy: self.session.isBusy)
             }
         }
     }
 
     private func refreshControls() {
-        sendButton.title = session.isBusy ? "중지" : "보내기"
+        let action = session.isBusy ? "답변 중지" : "질문 보내기"
+        sendButton.image = NSImage(systemSymbolName: session.isBusy ? "stop.fill" : "arrow.up", accessibilityDescription: action)
+        sendButton.toolTip = action
+        sendButton.setAccessibilityLabel(action)
         sendButton.isEnabled = session.isBusy || (documentAvailable && !session.isConnecting && !composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         modelPicker.isEnabled = !session.isBusy && !session.isConnecting && !session.models.isEmpty
         newButton.isEnabled = !session.isBusy
         connectButton.isHidden = session.signedIn && session.isConnected
         connectButton.title = session.isConnected ? "로그인" : "연결"
         connectButton.isEnabled = !session.isConnecting && !session.isBusy
-    }
-
-    private func renderTranscript() {
-        let messages = session.history.messages
-        let signature = messages.map { $0.id + $0.text }
-        guard signature != renderedMessages || renderedBusy != session.isBusy || transcript.string.isEmpty else { return }
-        renderedMessages = signature; renderedBusy = session.isBusy
-        let oldHeight = transcript.bounds.height
-        let visible = transcriptScroll.contentView.bounds
-        let nearBottom = visible.maxY >= oldHeight - 70
-        let content = NSMutableAttributedString()
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 4
-        paragraph.paragraphSpacing = 6
-        let bodyAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph]
-        if messages.isEmpty {
-            content.append(NSAttributedString(string: "PDF를 읽으며 바로 질문하세요\n\n전체 내용을 요약하거나, 현재 페이지의 수식·그림을 설명해 달라고 할 수 있습니다.\n\n문장을 선택하고 질문하면 선택한 내용도 함께 전달합니다. 질문에 필요한 PDF 내용은 ChatGPT로 전송됩니다.", attributes: bodyAttributes))
-        }
-        for message in messages {
-            let label = message.role == "user" ? "나" : message.role == "assistant" ? "ChatGPT" : "안내"
-            content.append(NSAttributedString(string: label + "\n", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: message.role == "user" ? NSColor.controlAccentColor : NSColor.secondaryLabelColor]))
-            if message.role == "assistant", let markdown = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                for run in markdown.runs {
-                    var attributes = bodyAttributes
-                    if let intent = run.inlinePresentationIntent {
-                        var font = NSFont.systemFont(ofSize: 13)
-                        if intent.contains(.stronglyEmphasized) { font = .boldSystemFont(ofSize: 13) }
-                        if intent.contains(.emphasized) { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
-                        if intent.contains(.code) { font = .monospacedSystemFont(ofSize: 12, weight: .regular) }
-                        attributes[.font] = font
-                    }
-                    if let link = run.link, ChatLink(url: link) != nil {
-                        attributes[.link] = link; attributes[.foregroundColor] = NSColor.linkColor
-                    }
-                    content.append(NSAttributedString(string: String(markdown.characters[run.range]), attributes: attributes))
-                }
-            } else {
-                content.append(NSAttributedString(string: message.text, attributes: bodyAttributes))
-            }
-            content.append(NSAttributedString(string: "\n\n", attributes: bodyAttributes))
-        }
-        transcript.textStorage?.setAttributedString(content)
-        if nearBottom || !session.isBusy { transcript.scrollToEndOfDocument(nil) }
     }
 
     private func showError(_ error: Error) {
