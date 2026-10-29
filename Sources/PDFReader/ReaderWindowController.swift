@@ -271,9 +271,13 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
         pdfView.highlightSelection = { [weak self] in self?.highlight(nil) }
         pdfView.removeHighlights = { [weak self] in self?.eraseHighlights(nil) }
         pdfView.openFiles = { urls in urls.forEach { AppDelegate.open($0) } }
-        for name in [Notification.Name.PDFViewPageChanged, .PDFViewScaleChanged, .PDFViewSelectionChanged] {
+        for name in [Notification.Name.PDFViewPageChanged, .PDFViewSelectionChanged] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: pdfView, queue: .main) { [weak self] _ in self?.refreshControls() })
         }
+        observers.append(NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: pdfView, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.zoomLabel.stringValue = "\(Int(self.pdfView.scaleFactor * 100))%"
+        })
         refreshControls()
     }
 
@@ -290,15 +294,16 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
     }
 
     private func refreshControls() {
+        let hasSelection = pdfView.currentSelection?.string?.isEmpty == false
         let page = pdfView.currentPage.map { readerDocument.pdf.index(for: $0) + 1 } ?? 1
         if window?.firstResponder !== pageField.currentEditor() { pageField.stringValue = "\(page)" }
         pageTotal.stringValue = "/ \(readerDocument.pdf.pageCount)"
         zoomLabel.stringValue = "\(Int(pdfView.scaleFactor * 100))%"
-        highlightButton?.isEnabled = pdfView.currentSelection?.string?.isEmpty == false && readerDocument.pdf.allowsCommenting
+        highlightButton?.isEnabled = hasSelection && readerDocument.pdf.allowsCommenting
         ocrButton?.isEnabled = readerDocument.pdf.allowsCopying && !readerDocument.pdf.isLocked && ocrRequest == nil
         chatGPTButton?.isEnabled = canSendToChatGPT
         chatController?.updateContext(page: page, total: readerDocument.pdf.pageCount,
-                                      hasSelection: pdfView.currentSelection?.string?.isEmpty == false, available: canSendToChatGPT)
+                                      hasSelection: hasSelection, available: canSendToChatGPT)
     }
 
     @objc func toggleChat(_ sender: Any?) {

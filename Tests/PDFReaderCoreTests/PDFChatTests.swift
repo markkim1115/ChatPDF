@@ -14,7 +14,7 @@ struct PDFChatTests {
         #expect(messages[1]["method"] as? String == "ready")
     }
 
-    @Test func pagesSearchAndSnapshotUseRealPDF() throws {
+    @Test func pagesSearchAndSnapshotUseRealPDF() async throws {
         let pdf = PDFIntegrationTests.makePDF([
             [.init(text: "Orchid experiment", y: 720)],
             [.init(text: "Accuracy is 93.7 percent.", y: 720)]
@@ -23,25 +23,27 @@ struct PDFChatTests {
         note.contents = "Unsaved note"
         pdf.page(at: 1)!.addAnnotation(note)
         let context = try PDFChatContext(document: pdf, title: "한글 + test.pdf", currentPage: 2, selection: "Accuracy")
+        note.contents = "Changed after the snapshot"
         pdf.removePage(at: 1)
-        let pages = context.call("read_pdf_pages", arguments: ["start_page": 1, "end_page": 2])
+        let pages = await context.call("read_pdf_pages", arguments: ["start_page": 1, "end_page": 2])
         let body = text(pages)
         #expect(body.contains("Orchid experiment"))
         #expect(body.contains("93.7 percent"))
         #expect(body.contains("Unsaved note"))
-        #expect(text(context.call("search_pdf", arguments: ["query": "ACCURACY"])).contains("PDF 2쪽"))
+        #expect(!body.contains("Changed after the snapshot"))
+        #expect(text(await context.call("search_pdf", arguments: ["query": "ACCURACY"])).contains("PDF 2쪽"))
         let input = try context.input(question: "설명해 줘")
         #expect(input.contains("Accuracy"))
         #expect(input.contains("\"current_page\":2"))
         #expect(input.contains("설명해 줘"))
-        #expect(context.call("read_pdf_pages", arguments: ["start_page": 0, "end_page": 2])["success"] as? Bool == false)
-        #expect(context.call("view_pdf_page", arguments: ["page": 3])["success"] as? Bool == false)
+        #expect(await context.call("read_pdf_pages", arguments: ["start_page": 0, "end_page": 2])["success"] as? Bool == false)
+        #expect(await context.call("view_pdf_page", arguments: ["page": 3])["success"] as? Bool == false)
     }
 
-    @Test func pageToolReturnsActualImage() throws {
+    @Test func pageToolReturnsActualImage() async throws {
         let pdf = PDFIntegrationTests.makePDF([[.init(text: "A rendered page", y: 720)]])
         let context = try PDFChatContext(document: pdf, title: "test", currentPage: 1, selection: "")
-        let result = context.call("view_pdf_page", arguments: ["page": 1])
+        let result = await context.call("view_pdf_page", arguments: ["page": 1])
         let items = try #require(result["contentItems"] as? [[String: Any]])
         let url = try #require(items.last?["imageUrl"] as? String)
         let bytes = try #require(Data(base64Encoded: String(url.dropFirst("data:image/png;base64,".count))))

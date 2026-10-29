@@ -7,9 +7,9 @@ enum PDFTextMetrics {
     struct LineGeometry {
         private var spacing: [ObjectIdentifier: PDFWordSpacing] = [:]
 
-        mutating func bounds(of line: PDFSelection, on page: PDFPage) -> CGRect {
+        mutating func bounds(of line: PDFSelection, on page: PDFPage, fontSize: CGFloat? = nil) -> CGRect {
             let box = line.bounds(for: page)
-            let size = PDFTextMetrics.fontSize(of: line, on: page)
+            let size = fontSize ?? PDFTextMetrics.fontSize(of: line, on: page)
             guard box.height > size * 2 else { return box }
             // A genuine drop cap has a larger font, unlike a broken font box.
             // Preserve its hit area so the opening body line remains selectable.

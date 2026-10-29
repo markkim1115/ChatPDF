@@ -23,6 +23,35 @@ public final class ReaderPDFView: PDFView {
     private var scrollObserver: NSObjectProtocol?
     private var scaleObserver: NSObjectProtocol?
     private var repairedSelectionBounds: [ObjectIdentifier: [CGRect]] = [:]
+    private var settingSelection = false
+    // Keep just the most recently used page. Zoom and scrolling do not change
+    // its PDF coordinates; replacing, rotating or cropping the page does.
+    private var cachedPage: PDFPage?
+    private var cachedRotation = 0
+    private var cachedCropBox = CGRect.zero
+    private var cachedLayout: PDFSelectionRepair.Layout?
+
+    public override var document: PDFDocument? {
+        didSet {
+            textDrag = nil
+            cachedPage = nil
+            cachedLayout = nil
+            selectedHighlight = nil
+            repairedSelectionBounds.removeAll()
+            selectionOverlay?.needsDisplay = true
+        }
+    }
+
+    func selectionLayout(on page: PDFPage) -> PDFSelectionRepair.Layout? {
+        let cropBox = page.bounds(for: .cropBox)
+        if cachedLayout == nil || cachedPage !== page || cachedRotation != page.rotation || cachedCropBox != cropBox {
+            cachedPage = page
+            cachedRotation = page.rotation
+            cachedCropBox = cropBox
+            cachedLayout = PDFSelectionRepair.Layout(page: page)
+        }
+        return cachedLayout
+    }
 
     public var highlightsToRemove: [Highlight] {
         if let hit = selectedHighlight, hit.page.document === document,
@@ -47,17 +76,18 @@ public final class ReaderPDFView: PDFView {
         minScaleFactor = 0.15
         maxScaleFactor = 8
         selectionObserver = NotificationCenter.default.addObserver(forName: .PDFViewSelectionChanged, object: self, queue: .main) { [weak self] _ in
-            self?.selectedHighlight = nil
-            self?.updateSelectionGeometry()
+            guard let self else { return }
+            self.selectedHighlight = nil
+            if !self.settingSelection { self.updateSelectionGeometry(self.currentSelection) }
         }
     }
 
     public required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    private func updateSelectionGeometry() {
+    private func updateSelectionGeometry(_ selection: PDFSelection?) {
         repairedSelectionBounds.removeAll()
         selectionOverlay?.needsDisplay = true
-        guard let selection = currentSelection else { return }
+        guard let selection else { return }
         var geometry = PDFTextMetrics.LineGeometry()
         var bounds: [ObjectIdentifier: [CGRect]] = [:]
         var repaired = false
@@ -76,10 +106,10 @@ public final class ReaderPDFView: PDFView {
         // PDFKit's native selection layer uses malformed glyph bounds even when
         // its page drawing hooks are overridden. Hide only that layer and draw
         // the recovered rectangles above it; the actual text selection is kept.
-        var geometry = PDFTextMetrics.LineGeometry()
-        if let selection, selection.selectionsByLine().contains(where: { line in
-            line.pages.contains { geometry.bounds(of: line, on: $0) != line.bounds(for: $0) }
-        }) { selection.color = .clear }
+        updateSelectionGeometry(selection)
+        if !repairedSelectionBounds.isEmpty { selection?.color = .clear }
+        settingSelection = true
+        defer { settingSelection = false }
         super.setCurrentSelection(selection, animate: animate)
     }
 
@@ -152,7 +182,7 @@ public final class ReaderPDFView: PDFView {
             let pagePoint = convert(point, to: page)
             if let annotation = page.annotation(at: pagePoint), annotation.type != "Highlight" { return event }
             let highlight = Highlights.at(pagePoint, on: page)
-            let layout = PDFSelectionRepair.Layout(page: page)
+            let layout = selectionLayout(on: page)
             guard layout?.contains(pagePoint) == true || highlight != nil else { return event }
             textDrag = TextDrag(page: page, point: pagePoint, layout: layout, highlight: highlight)
             window?.makeFirstResponder(self)

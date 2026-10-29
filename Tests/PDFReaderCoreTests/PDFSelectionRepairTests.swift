@@ -145,11 +145,17 @@ struct PDFSelectionRepairTests {
                 windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
         }
         let a = try point("Select", on: page), b = try point("and this second line.", on: page, end: true)
-        #expect(view.handleSelectionEvent(event(.leftMouseDown, a)) == nil)
-        #expect(view.handleSelectionEvent(event(.leftMouseDragged, b)) == nil)
+        for scale in [1.0, 2.85, 0.75, 2.0, 1.0] {
+            view.scaleFactor = scale
+            view.layoutDocumentView()
+            view.go(to: PDFDestination(page: page, at: CGPoint(x: 0, y: 792)))
+            #expect(view.handleSelectionEvent(event(.leftMouseDown, a)) == nil)
+            #expect(view.handleSelectionEvent(event(.leftMouseDragged, b)) == nil)
+            #expect(PDFTextExtractor.clean(try #require(view.currentSelection)) == "Select this first line and this second line.")
+            #expect(view.handleSelectionEvent(event(.leftMouseUp, b)) == nil)
+        }
         let selected = try #require(view.currentSelection)
         #expect(PDFTextExtractor.clean(selected) == "Select this first line and this second line.")
-        #expect(view.handleSelectionEvent(event(.leftMouseUp, b)) == nil)
         let marks = Highlights.make(for: selected, color: .yellow)
         marks.forEach { $0.page.addAnnotation($0.annotation) }
         view.clearSelection()
@@ -163,6 +169,41 @@ struct PDFSelectionRepairTests {
             windowNumber: window.windowNumber, context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51))
         #expect(view.handleSelectionEvent(delete) == nil)
         #expect(page.annotations.count == marks.count - 1)
+    }
+
+    @Test func cachedSelectionLayoutSurvivesZoomButNotDocumentOrPageChanges() throws {
+        _ = NSApplication.shared
+        let pdf = PDFIntegrationTests.makePDF([[.init(text: "First document", y: 720)]])
+        let page = try #require(pdf.page(at: 0))
+        let view = ReaderPDFView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
+        view.document = pdf
+        let layout = try #require(view.selectionLayout(on: page))
+        view.scaleFactor = 2.85
+        #expect(view.selectionLayout(on: page) === layout)
+        page.rotation = 90
+        #expect(view.selectionLayout(on: page) == nil)
+        page.rotation = 0
+        let rotatedBack = try #require(view.selectionLayout(on: page))
+        #expect(rotatedBack !== layout)
+        page.setBounds(CGRect(x: 0, y: 0, width: 300, height: 792), for: .cropBox)
+        #expect(view.selectionLayout(on: page) !== rotatedBack)
+
+        let replacement = PDFIntegrationTests.makePDF([[.init(text: "Replacement document", y: 720)]])
+        view.document = replacement
+        let replacementPage = try #require(replacement.page(at: 0))
+        let result = try #require(view.selectionLayout(on: replacementPage)?.selection(
+            from: try point("Replacement document", on: replacementPage),
+            to: try point("Replacement document", on: replacementPage, end: true)))
+        #expect(result.string == "Replacement document")
+        weak var releasedPDF: PDFDocument?
+        autoreleasepool {
+            let temporary = PDFIntegrationTests.makePDF([[.init(text: "Temporary", y: 720)]])
+            releasedPDF = temporary
+            view.document = temporary
+            _ = view.selectionLayout(on: temporary.page(at: 0)!)
+            view.document = nil
+        }
+        #expect(releasedPDF == nil)
     }
 
     @Test func markupHitTestingUsesQuadsInsteadOfOuterBounds() throws {

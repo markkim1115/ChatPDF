@@ -3,21 +3,23 @@ import PDFKit
 
 @MainActor
 public final class PDFChatContext {
-    private let document: PDFDocument
+    private let reader: PDFChatDocumentReader
     public let title: String
     public let currentPage: Int
     public let selection: String
-    public var pageCount: Int { document.pageCount }
+    public let pageCount: Int
 
     public init(document: PDFDocument, title: String, currentPage: Int, selection: String) throws {
         guard !document.isLocked, document.allowsCopying, document.pageCount > 0 else {
             throw ChatError("잠겨 있거나 복사가 제한된 PDF는 대화에 사용할 수 없습니다.")
         }
-        // A per-turn copy includes unsaved annotations and stays stable while reading continues.
-        guard let data = document.dataRepresentation(), let snapshot = PDFDocument(data: data), !snapshot.isLocked else {
+        // PDFKit's copy preserves unsaved annotations without serializing the
+        // entire file on the UI thread. Only the reader actor uses this copy.
+        guard let snapshot = document.copy() as? PDFDocument, !snapshot.isLocked else {
             throw ChatError("현재 PDF의 내용을 준비하지 못했습니다.")
         }
-        self.document = snapshot
+        self.reader = PDFChatDocumentReader(document: snapshot)
+        self.pageCount = snapshot.pageCount
         self.title = title
         self.currentPage = min(max(1, currentPage), snapshot.pageCount)
         self.selection = selection
@@ -49,7 +51,20 @@ public final class PDFChatContext {
         ]
     }
 
-    public func call(_ tool: String, arguments: [String: Any]) -> [String: Any] {
+    public func call(_ tool: String, arguments: [String: Any]) async -> [String: Any] {
+        await reader.call(tool, arguments: arguments)
+    }
+}
+
+// Serialize access to the independent snapshot away from event handling, so
+// searching or rendering a page cannot block PDF dragging and pinch gestures.
+private actor PDFChatDocumentReader {
+    private let document: PDFDocument
+    private var pageCount: Int { document.pageCount }
+
+    init(document: PDFDocument) { self.document = document }
+
+    func call(_ tool: String, arguments: [String: Any]) -> [String: Any] {
         do {
             switch tool {
             case "read_pdf_pages":

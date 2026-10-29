@@ -37,7 +37,7 @@ enum PDFSelectionRepair {
             let fragments = entire.selectionsByLine().compactMap { part -> Fragment? in
                 guard part.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return nil }
                 let size = PDFTextMetrics.fontSize(of: part, on: page)
-                let bounds = geometry.bounds(of: part, on: page)
+                let bounds = geometry.bounds(of: part, on: page, fontSize: size)
                 return Fragment(selection: part, bounds: bounds, size: size)
             }
             let sorted = fragments.sorted { $0.bounds.maxY > $1.bounds.maxY }

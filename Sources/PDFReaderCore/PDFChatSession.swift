@@ -78,7 +78,7 @@ public final class PDFChatSession {
                     }
                     self.status = name == "view_pdf_page" ? "페이지 이미지를 확인하는 중…" : "PDF 내용을 읽는 중…"
                     self.onChange?()
-                    return context.call(name, arguments: arguments)
+                    return await context.call(name, arguments: arguments)
                 }
                 if method == "item/commandExecution/requestApproval" || method == "item/fileChange/requestApproval" {
                     return ["decision": "decline"]

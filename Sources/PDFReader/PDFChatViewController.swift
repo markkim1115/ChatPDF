@@ -177,8 +177,10 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
 
     func updateContext(page: Int, total: Int, hasSelection: Bool, available: Bool) {
         _ = view
+        let label = "현재 \(page) / \(total)쪽" + (hasSelection ? " · 선택한 문장 포함" : " · 전체 PDF에서 답변")
+        if contextLabel.stringValue != label { contextLabel.stringValue = label }
+        guard documentAvailable != available else { return }
         documentAvailable = available
-        contextLabel.stringValue = "현재 \(page) / \(total)쪽" + (hasSelection ? " · 선택한 문장 포함" : " · 전체 PDF에서 답변")
         refreshControls()
     }
 
