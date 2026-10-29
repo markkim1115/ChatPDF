@@ -2,6 +2,9 @@ import AppKit
 import PDFReaderCore
 
 final class ChatPanelBackground: NSView {
+    override var acceptsFirstResponder: Bool { true }
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(self) }
+
     override func draw(_ dirtyRect: NSRect) {
         NSColor.textBackgroundColor.setFill()
         dirtyRect.fill()
@@ -167,6 +170,8 @@ final class ChatTranscriptView: NSView {
     private var viewportHeight: CGFloat = 0
 
     override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(self) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)

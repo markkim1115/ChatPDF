@@ -213,7 +213,7 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
             zoomLabel.setAccessibilityLabel("확대 비율")
             zoomLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
             item.view = stack([iconButton("minus.magnifyingglass", label: "축소 · ⌘−", action: #selector(zoomOut(_:))), zoomLabel,
-                               iconButton("plus.magnifyingglass", label: "확대 · ⌘+", action: #selector(zoomIn(_:))),
+                               iconButton("plus.magnifyingglass", label: "확대 · ⌘=", action: #selector(zoomIn(_:))),
                                iconButton("arrow.up.left.and.arrow.down.right", label: "페이지 맞춤 · ⌘0", action: #selector(fitPage(_:)))])
         case "highlight":
             item.label = "형광펜"
@@ -505,6 +505,14 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
     }
     @objc func previousPage(_ sender: Any?) { pdfView.goToPreviousPage(sender) }
     @objc func nextPage(_ sender: Any?) { pdfView.goToNextPage(sender) }
+    func zoomFocusedContentIn(_ sender: Any?) {
+        if let chatController, chatController.hasFocus { chatController.zoomIn() }
+        else { zoomIn(sender) }
+    }
+    func zoomFocusedContentOut(_ sender: Any?) {
+        if let chatController, chatController.hasFocus { chatController.zoomOut() }
+        else { zoomOut(sender) }
+    }
     @objc func zoomIn(_ sender: Any?) { pdfView.autoScales = false; pdfView.zoomIn(sender) }
     @objc func zoomOut(_ sender: Any?) { pdfView.autoScales = false; pdfView.zoomOut(sender) }
     @objc func fitPage(_ sender: Any?) { pdfView.autoScales = true }

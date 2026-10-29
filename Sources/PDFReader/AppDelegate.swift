@@ -66,8 +66,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc func copyOriginal(_ sender: Any?) { reader?.copyOriginal(sender) }
     @objc func copyCleaned(_ sender: Any?) { reader?.copyCleaned(sender) }
+    @objc func zoomFocusedContentIn(_ sender: Any?) { reader?.zoomFocusedContentIn(sender) }
+    @objc func zoomFocusedContentOut(_ sender: Any?) { reader?.zoomFocusedContentOut(sender) }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(zoomFocusedContentIn(_:)) || menuItem.action == #selector(zoomFocusedContentOut(_:)) {
+            return reader != nil
+        }
         if menuItem.action == #selector(copyText(_:)) {
             if let editor = NSApp.keyWindow?.firstResponder as? NSTextView { return editor.selectedRange().length > 0 }
             return reader?.pdfView.document?.allowsCopying == true && reader?.pdfView.currentSelection?.string?.isEmpty == false
@@ -126,8 +131,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let view = submenu("보기", in: main)
         add("사이드바 보기", #selector(ReaderWindowController.toggleSidebar(_:)), key: "s", modifiers: [.command, .option], to: view)
         view.addItem(.separator())
-        add("확대", #selector(ReaderWindowController.zoomIn(_:)), key: "+", to: view)
-        add("축소", #selector(ReaderWindowController.zoomOut(_:)), key: "-", to: view)
+        add("확대", #selector(zoomFocusedContentIn(_:)), key: "=", target: self, to: view)
+        // The same physical key may produce "+" depending on the keyboard layout.
+        let zoomInAlias = NSMenuItem(title: "확대", action: #selector(zoomFocusedContentIn(_:)), keyEquivalent: "+")
+        zoomInAlias.target = self
+        zoomInAlias.keyEquivalentModifierMask = [.command]
+        zoomInAlias.isHidden = true
+        zoomInAlias.allowsKeyEquivalentWhenHidden = true
+        view.addItem(zoomInAlias)
+        add("축소", #selector(zoomFocusedContentOut(_:)), key: "-", target: self, to: view)
         add("페이지 맞춤", #selector(ReaderWindowController.fitPage(_:)), key: "0", to: view)
         add("실제 크기", #selector(ReaderWindowController.actualSize(_:)), key: "1", to: view)
         view.addItem(.separator())
