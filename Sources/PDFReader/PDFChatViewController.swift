@@ -202,6 +202,8 @@ final class PDFChatViewController: NSViewController, NSTextViewDelegate {
         if let value = zoomLevels.first(where: { $0 > zoomPercent }) { applyZoom(value) }
     }
 
+    func resetZoom() { applyZoom(100) }
+
     private func applyZoom(_ percent: Int) {
         zoomPercent = percent
         UserDefaults.standard.set(percent, forKey: "chatZoomPercent")

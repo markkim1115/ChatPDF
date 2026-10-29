@@ -513,6 +513,11 @@ final class ReaderWindowController: NSWindowController, NSToolbarDelegate, NSSea
         if let chatController, chatController.hasFocus { chatController.zoomOut() }
         else { zoomOut(sender) }
     }
+    var isChatFocused: Bool { chatController?.hasFocus == true }
+    func resetFocusedContentZoom(_ sender: Any?) {
+        if let chatController, chatController.hasFocus { chatController.resetZoom() }
+        else { fitPage(sender) }
+    }
     @objc func zoomIn(_ sender: Any?) { pdfView.autoScales = false; pdfView.zoomIn(sender) }
     @objc func zoomOut(_ sender: Any?) { pdfView.autoScales = false; pdfView.zoomOut(sender) }
     @objc func fitPage(_ sender: Any?) { pdfView.autoScales = true }

@@ -68,8 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func copyCleaned(_ sender: Any?) { reader?.copyCleaned(sender) }
     @objc func zoomFocusedContentIn(_ sender: Any?) { reader?.zoomFocusedContentIn(sender) }
     @objc func zoomFocusedContentOut(_ sender: Any?) { reader?.zoomFocusedContentOut(sender) }
+    @objc func resetFocusedContentZoom(_ sender: Any?) { reader?.resetFocusedContentZoom(sender) }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(resetFocusedContentZoom(_:)) {
+            menuItem.title = reader?.isChatFocused == true ? "대화 배율 100%" : "페이지 맞춤"
+            return reader != nil
+        }
         if menuItem.action == #selector(zoomFocusedContentIn(_:)) || menuItem.action == #selector(zoomFocusedContentOut(_:)) {
             return reader != nil
         }
@@ -140,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         zoomInAlias.allowsKeyEquivalentWhenHidden = true
         view.addItem(zoomInAlias)
         add("축소", #selector(zoomFocusedContentOut(_:)), key: "-", target: self, to: view)
-        add("페이지 맞춤", #selector(ReaderWindowController.fitPage(_:)), key: "0", to: view)
+        add("페이지 맞춤", #selector(resetFocusedContentZoom(_:)), key: "0", target: self, to: view)
         add("실제 크기", #selector(ReaderWindowController.actualSize(_:)), key: "1", to: view)
         view.addItem(.separator())
         add("이전 페이지", #selector(ReaderWindowController.previousPage(_:)), key: String(UnicodeScalar(NSUpArrowFunctionKey)!), modifiers: [.command], to: view)
